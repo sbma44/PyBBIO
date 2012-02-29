@@ -74,7 +74,12 @@ def _init():
   # turn on the PWM modules' clocks
   for module in (CM_PER_EPWMSS0_CLKCTRL, CM_PER_EPWMSS1_CLKCTRL, CM_PER_EPWMSS2_CLKCTRL):
     reg = _getReg(CM_PER + module, 32) | 2
-    _setReg(CM_PER + module, reg, 32)  
+    _setReg(CM_PER + module, reg, 32)
+  
+  # pull modules out of standby/idle
+  for module in (PWMSS0, PWMSS1, PWMSS2):
+    reg = int('00000000000000000000000000010100', 2)
+    _setReg(module+PWMSS_SYSCONFIG, reg, 32)
   
   # initialize PWM  behavior
   for (i,pwm) in enumerate( (EPWM0, EPWM1, EPWM2) ):
@@ -82,6 +87,11 @@ def _init():
     
     # set TBCTL
     _setReg(pwm+EPWM_TBCTL, int('0010000001110000', 2), 16)
+
+    # set action qualifier registers (these define pin behavior on timer comparison events)
+    # all of these assume an incrementing counter
+    _setReg(pwm+EPWM_AQCTLA, int('0000000000010010', 2), 16) # set action qualifier behavior so that zero = high, CMPA = low
+    _setReg(pwm+EPWM_AQCTLB, int('0000000100000010', 2), 16) # set action qualifier behavior so that zero = high, CMPB = low
 
     # set TBPHS and TBCNT to zero
     _setReg(pwm+EPWM_TBPHS, 0, 16)
@@ -93,15 +103,7 @@ def _init():
           
     # set period to max possible
     _setReg(pwm+EPWM_TBPRD, 0xffff, 16)
-      
-    # set action qualifier registers (these define pin behavior on timer comparison events)
-    # all of these assume an incrementing counter
-    bits_to_manipulate = int('1111110011001100', 2)
-    aqctl_reg_a = _getReg(pwm+EPWM_AQCTLA, 16) & bits_to_manipulate # zero out the bits we want to set
-    aqctl_reg_b = _getReg(pwm+EPWM_AQCTLB, 16) & bits_to_manipulate # zero out the bits we want to set    
-    _setReg(pwm+EPWM_AQCTLA, (aqctl_reg_a | int('0000000000010010', 2)), 16) # set action qualifier behavior so that zero = high, CMPA = low
-    _setReg(pwm+EPWM_AQCTLB, (aqctl_reg_b | int('0000000100000010', 2)), 16) # set action qualifier behavior so that zero = high, CMPB = low
-  
+                  
 
 
 def cleanup():
@@ -169,6 +171,7 @@ def _getReg(address, length=32):
   elif length==16:
     return struct.unpack("<H", __mmap[address:address+2])[0]
 
+# TODO: figure out MSB/LSB/endianness business
 def _setReg(address, new_value, length=32):
   """ Sets bits (32 by default) at given address to given value. """
   if length==32:
